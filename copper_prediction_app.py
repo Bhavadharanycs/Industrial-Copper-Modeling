@@ -49,7 +49,7 @@ def clean_data(copper_data):
 # Encoding categorical variables
 def encode_data(copper_data):
     # One-hot encode 'item type'
-    encoder = OneHotEncoder(sparse=False)
+    encoder = OneHotEncoder(sparse_output=False)
     item_type_encoded = encoder.fit_transform(copper_data[['item type']])
     item_type_df = pd.DataFrame(item_type_encoded, columns=encoder.get_feature_names_out(['item type']))
 
