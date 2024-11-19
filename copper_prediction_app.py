@@ -1,137 +1,88 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-import streamlit as st
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, IsolationForest
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, classification_report
 import pickle
+from sklearn.preprocessing import StandardScaler
 
-# Load the dataset
-@st.cache
+# Title and Description
+st.title("Copper Industry ML Predictions")
+st.write("Select a task (Regression or Classification) and input values to predict the outcome.")
+
+# Task Selection
+task = st.radio("Select Task", ("Regression", "Classification"))
+
+# Load Preprocessed Data for Schema Reference
+@st.cache_data
 def load_data():
-    return pd.read_csv("Copper_Set.csv")
+    # Simulated data structure (update with real preprocessed schema if available)
+    data = pd.read_csv("Copper_Set.csv")  # Replace with your preprocessed dataset
+    return data
 
-# Data cleaning and preprocessing
-def clean_data(copper_data):
-    # Convert invalid 'material_ref' values starting with '00000' to NaN
-    copper_data['material_ref'] = copper_data['material_ref'].replace(
-        to_replace=r'^00000.*', value=None, regex=True
-    )
-    # Convert 'quantity tons' to numeric, forcing errors to NaN for non-numeric values
-    copper_data['quantity tons'] = pd.to_numeric(copper_data['quantity tons'], errors='coerce')
-    
-    # Fill missing values with median for numerical and mode for categorical
-    numerical_columns = ['item_date', 'quantity tons', 'customer', 'country', 'application', 
-                         'thickness', 'width', 'delivery date', 'selling_price']
-    for col in numerical_columns:
-        copper_data[col].fillna(copper_data[col].median(), inplace=True)
-    
-    categorical_columns = ['status', 'item type', 'material_ref']
-    for col in categorical_columns:
-        copper_data[col].fillna(copper_data[col].mode()[0], inplace=True)
-    
-    # Treat outliers using Isolation Forest
-    iso_forest = IsolationForest(contamination=0.01, random_state=42)
-    outlier_predictions = iso_forest.fit_predict(copper_data[['quantity tons', 'thickness', 'selling_price']])
-    copper_data_cleaned = copper_data[outlier_predictions == 1]
-    
-    # Log transformation for highly skewed columns
-    skewed_columns = ['quantity tons', 'thickness', 'selling_price']
-    for col in skewed_columns:
-        copper_data_cleaned[col] = copper_data_cleaned[col].apply(lambda x: x + 1 if x > 0 else 1)  # Avoid log(0)
-        copper_data_cleaned[f'log_{col}'] = np.log(copper_data_cleaned[col])
-    
-    return copper_data_cleaned
+data = load_data()
 
-# Encoding categorical variables
-def encode_data(copper_data):
-    # One-hot encode 'item type'
-    encoder = OneHotEncoder(sparse_output=False)
-    item_type_encoded = encoder.fit_transform(copper_data[['item type']])
-    item_type_df = pd.DataFrame(item_type_encoded, columns=encoder.get_feature_names_out(['item type']))
+# Separate Features and Target
+if task == "Regression":
+    target_variable = "Selling_Price"
+    if target_variable not in data.columns:
+        st.error(f"'{target_variable}' column not found in dataset.")
+else:
+    target_variable = "Status"
+    if target_variable not in data.columns:
+        st.error(f"'{target_variable}' column not found in dataset.")
 
-    # Label encode 'status'
-    label_encoder = LabelEncoder()
-    copper_data['status_encoded'] = label_encoder.fit_transform(copper_data['status'])
+features = [col for col in data.columns if col != target_variable]
 
-    # Combine data
-    copper_data_encoded = pd.concat([copper_data, item_type_df], axis=1).drop(columns=['item type'])
-    return copper_data_encoded, label_encoder, encoder
+# User Input for Feature Values
+st.header("Input Feature Values")
+user_input = {}
 
-# Model building and training
-def train_models(copper_data_encoded):
-    # Splitting for Regression
-    X_reg = copper_data_encoded.drop(columns=['selling_price', 'status_encoded'])
-    y_reg = copper_data_encoded['selling_price']
-    X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(X_reg, y_reg, test_size=0.2, random_state=42)
+for feature in features:
+    dtype = data[feature].dtype
+    if np.issubdtype(dtype, np.number):
+        user_input[feature] = st.number_input(f"Enter {feature}", value=float(data[feature].mean()))
+    else:
+        user_input[feature] = st.text_input(f"Enter {feature}", value=str(data[feature].mode()[0]))
 
-    # Splitting for Classification
-    X_cls = copper_data_encoded.drop(columns=['status_encoded', 'selling_price'])
-    y_cls = copper_data_encoded['status_encoded']
-    X_train_cls, X_test_cls, y_train_cls, y_test_cls = train_test_split(X_cls, y_cls, test_size=0.2, random_state=42)
+# Convert Input to DataFrame
+input_df = pd.DataFrame([user_input])
 
-    # Standard Scaling
-    scaler = StandardScaler()
-    X_train_reg = scaler.fit_transform(X_train_reg)
-    X_test_reg = scaler.transform(X_test_reg)
-    X_train_cls = scaler.fit_transform(X_train_cls)
-    X_test_cls = scaler.transform(X_test_cls)
+# Feature Engineering and Transformations
+@st.cache_data
+def apply_transformations(input_data, task):
+    # Apply transformations used in model training
+    input_data = input_data.copy()
+    # Scaling for numerical columns
+    scaler = pickle.load(open("scaler.pkl", "rb"))
+    numeric_cols = input_data.select_dtypes(include=[np.number]).columns
+    input_data[numeric_cols] = scaler.transform(input_data[numeric_cols])
 
-    # Regression Model
-    regressor = RandomForestRegressor(random_state=42)
-    regressor.fit(X_train_reg, y_train_reg)
-    y_pred_reg = regressor.predict(X_test_reg)
-    regressor_mse = mean_squared_error(y_test_reg, y_pred_reg)
+    # Encoding for categorical columns
+    encoder = pickle.load(open("encoder.pkl", "rb"))
+    categorical_cols = input_data.select_dtypes(include=[object]).columns
+    input_data[categorical_cols] = encoder.transform(input_data[categorical_cols])
 
-    # Classification Model
-    classifier = RandomForestClassifier(random_state=42)
-    classifier.fit(X_train_cls, y_train_cls)
-    y_pred_cls = classifier.predict(X_test_cls)
-    classification_rep = classification_report(y_test_cls, y_pred_cls)
+    return input_data
 
-    # Save models
-    pickle.dump(regressor, open('regressor_model.pkl', 'wb'))
-    pickle.dump(classifier, open('classifier_model.pkl', 'wb'))
-    pickle.dump(scaler, open('scaler.pkl', 'wb'))
-    pickle.dump(encoder, open('encoder.pkl', 'wb'))
-    pickle.dump(label_encoder, open('label_encoder.pkl', 'wb'))
+try:
+    transformed_input = apply_transformations(input_df, task)
+except Exception as e:
+    st.error(f"Transformation Error: {e}")
 
-    return regressor_mse, classification_rep
+# Load Model and Make Prediction
+if st.button("Predict"):
+    try:
+        model_file = "regression_model.pkl" if task == "Regression" else "classification_model.pkl"
+        with open(model_file, "rb") as f:
+            model = pickle.load(f)
 
-# Streamlit app
-def run_streamlit():
-    st.title("Copper Industry Prediction App")
+        prediction = model.predict(transformed_input)
 
-    # Load and clean data
-    copper_data = load_data()
-    cleaned_data = clean_data(copper_data)
-    encoded_data, label_encoder, encoder = encode_data(cleaned_data)
-
-    # Train models
-    regressor_mse, classification_rep = train_models(encoded_data)
-
-    st.write(f"Regression Model MSE: {regressor_mse}")
-    st.write(f"Classification Report: \n{classification_rep}")
-
-    # Streamlit inputs and predictions
-    task = st.selectbox("Choose Task", ["Regression (Selling Price)", "Classification (Status)"])
-    if task == "Regression (Selling Price)":
-        # Input fields for regression
-        inputs = {col: st.number_input(f"Enter {col}") for col in encoded_data.drop(columns=['selling_price', 'status_encoded']).columns}
-        inputs_scaled = scaler.transform([list(inputs.values())])
-        prediction = regressor.predict(inputs_scaled)
-        st.write(f"Predicted Selling Price: {prediction[0]}")
-
-    elif task == "Classification (Status)":
-        # Input fields for classification
-        inputs = {col: st.number_input(f"Enter {col}") for col in encoded_data.drop(columns=['status_encoded', 'selling_price']).columns}
-        inputs_scaled = scaler.transform([list(inputs.values())])
-        prediction = classifier.predict(inputs_scaled)
-        status = label_encoder.inverse_transform(prediction)
-        st.write(f"Predicted Status: {status[0]}")
-
-if __name__ == "__main__":
-    run_streamlit()
+        if task == "Regression":
+            # Reverse log transformation if applied
+            st.success(f"Predicted Selling Price: ${np.expm1(prediction[0]):.2f}")
+        else:
+            # Display classification outcome
+            status = "WON" if prediction[0] == 1 else "LOST"
+            st.success(f"Predicted Status: {status}")
+    except Exception as e:
+        st.error(f"Prediction Error: {e}")
