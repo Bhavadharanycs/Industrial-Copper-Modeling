@@ -18,7 +18,7 @@ data = pd.read_csv(file_path)
 
 # Data Preprocessing
 # Treat Material_Reference rubbish values as null
-data['Material_Reference'] = data['Material_Reference'].replace(r'^00000.*', np.nan, regex=True)
+data['material_ref'] = data['material_ref'].replace(r'^00000.*', np.nan, regex=True)
 
 # Handle Missing Values
 imputer = SimpleImputer(strategy='most_frequent')
