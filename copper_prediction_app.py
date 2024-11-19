@@ -9,7 +9,6 @@ from sklearn.pipeline import Pipeline
 import pickle
 import os
 
-# Function to preprocess the dataset
 def preprocess_data(df, task):
     # Display dataset columns for debugging
     st.write("Dataset Columns:", df.columns.tolist())
@@ -35,7 +34,7 @@ def preprocess_data(df, task):
 
     return df
 
-# Function to load or train models
+
 def load_or_train_models(df):
     # Check if models exist, load them if available
     if os.path.exists("Regression_model.pkl") and os.path.exists("Classification_model.pkl"):
@@ -46,6 +45,19 @@ def load_or_train_models(df):
         X = df.drop(columns=["selling_price", "status"], errors="ignore")
         y_reg = df["selling_price"] if "selling_price" in df.columns else None
         y_cls = df["status"] if "status" in df.columns else None
+
+        # Handle missing target values
+        if y_reg is not None:
+            valid_idx = ~y_reg.isna()
+            X = X[valid_idx]
+            y_reg = y_reg[valid_idx]
+            st.write(f"Dropped {len(valid_idx) - valid_idx.sum()} rows with missing 'selling_price'.")
+        
+        if y_cls is not None:
+            valid_idx = ~y_cls.isna()
+            X = X[valid_idx]
+            y_cls = y_cls[valid_idx]
+            st.write(f"Dropped {len(valid_idx) - valid_idx.sum()} rows with missing 'status'.")
 
         # Define categorical and numerical columns
         categorical_cols = ["country", "item type", "application"]
