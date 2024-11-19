@@ -2,92 +2,56 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_absolute_error, accuracy_score, classification_report
 import pickle
 
-# Load dataset
-@st.cache
-def load_data():
-    file_path = "Copper_Set.csv"  # Adjust path as needed
-    df = pd.read_csv(file_path)
-    df['material_ref'] = df['material_ref'].replace(to_replace=r'^0+$', value=np.nan, regex=True)
-    return df
-
-# Preprocessing functions
-def preprocess_data(df, task):
-    df = df.copy()
-    # Drop irrelevant columns
-    df.drop(columns=['id', 'product_ref', 'delivery date'], inplace=True)
-
-    # Handle missing values
-    for col in ['quantity', 'thickness', 'width']:
-        df[col].fillna(df[col].median(), inplace=True)
-
-    # Handle skewness in numeric columns
-    skewed_cols = ['quantity', 'thickness', 'width', 'selling_price']
-    for col in skewed_cols:
-        df[col] = np.log1p(df[col])  # Log transformation
-
-    # Encode categorical variables
-    categorical_cols = ['country', 'item type', 'application']
-    df = pd.get_dummies(df, columns=categorical_cols, drop_first=True)
-
-    # Return features and target based on task
-    if task == "Regression":
-        X = df.drop(columns=['selling_price', 'status'])
-        y = df['selling_price']
-    elif task == "Classification":
-        df = df[df['status'].isin(['Won', 'Lost'])]
-        X = df.drop(columns=['selling_price', 'status'])
-        y = df['status'].apply(lambda x: 1 if x == 'Won' else 0)
-    return X, y
+# Load pre-trained models and preprocessors
+@st.cache(allow_output_mutation=True)
+def load_models():
+    regression_model = pickle.load(open("Regression_model.pkl", "rb"))
+    classification_model = pickle.load(open("Classification_model.pkl", "rb"))
+    scaler = pickle.load(open("Scaler.pkl", "rb"))
+    encoder = pickle.load(open("Encoder.pkl", "rb"))
+    return regression_model, classification_model, scaler, encoder
 
 # Streamlit App
 def main():
-    st.title("Copper Industry ML Predictions")
-    
-    task = st.sidebar.selectbox("Choose Task", ["Regression", "Classification"])
-    df = load_data()
-    X, y = preprocess_data(df, task)
+    st.title("Copper Industry Predictions")
 
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    # Choose model
-    if task == "Regression":
-        model = RandomForestRegressor(random_state=42)
-    elif task == "Classification":
-        model = RandomForestClassifier(random_state=42)
+    # Sidebar for task selection
+    task = st.sidebar.selectbox("Select Task", ["Regression (Selling_Price)", "Classification (Status)"])
 
-    # Train model
-    model.fit(X_train, y_train)
+    # Feature inputs based on task
+    st.sidebar.subheader("Enter Feature Values")
+    input_data = {}
 
-    # Evaluate model
-    if task == "Regression":
-        y_pred = model.predict(X_test)
-        st.write("Mean Absolute Error:", mean_absolute_error(y_test, y_pred))
-    elif task == "Classification":
-        y_pred = model.predict(X_test)
-        st.write("Accuracy:", accuracy_score(y_test, y_pred))
-        st.text(classification_report(y_test, y_pred))
+    # Common input fields
+    input_data["quantity"] = st.sidebar.number_input("Quantity (in tons)", min_value=0.0, value=1.0)
+    input_data["thickness"] = st.sidebar.number_input("Thickness (mm)", min_value=0.0, value=1.0)
+    input_data["width"] = st.sidebar.number_input("Width (mm)", min_value=0.0, value=100.0)
+    input_data["country"] = st.sidebar.selectbox("Country", ["28", "25", "30", "32"])
+    input_data["item_type"] = st.sidebar.selectbox("Item Type", ["W", "WI", "S"])
+    input_data["application"] = st.sidebar.selectbox("Application", ["10", "41", "28", "59"])
 
-    # Save model
-    pickle.dump(model, open(f"{task}_model.pkl", "wb"))
-
-    # Interactive prediction
-    st.sidebar.write("Input Features")
-    user_input = {col: st.sidebar.text_input(col, "") for col in X.columns}
-    user_input_df = pd.DataFrame(user_input, index=[0])
+    # Load models and preprocessors
+    regression_model, classification_model, scaler, encoder = load_models()
 
     if st.sidebar.button("Predict"):
-        model = pickle.load(open(f"{task}_model.pkl", "rb"))
-        prediction = model.predict(user_input_df)
-        st.write(f"Prediction: {prediction}")
+        # Prepare data for prediction
+        data = pd.DataFrame([input_data])
+        # Encode categorical features
+        categorical_cols = ["country", "item_type", "application"]
+        data[categorical_cols] = encoder.transform(data[categorical_cols])
+        # Scale numerical features
+        data = scaler.transform(data)
+
+        # Perform predictions
+        if "Regression" in task:
+            prediction = regression_model.predict(data)
+            st.write(f"Predicted Selling Price: ${np.expm1(prediction[0]):.2f}")
+        elif "Classification" in task:
+            prediction = classification_model.predict(data)
+            status = "Won" if prediction[0] == 1 else "Lost"
+            st.write(f"Predicted Status: {status}")
 
 if __name__ == "__main__":
     main()
