@@ -13,7 +13,7 @@ import pickle
 import streamlit as st
 
 # Load Dataset
-file_path = 'Copper_Set 1.csv'  # Replace with uploaded file path
+file_path = 'Copper_Set.csv'  # Replace with uploaded file path
 data = pd.read_csv(file_path)
 
 # Data Preprocessing
