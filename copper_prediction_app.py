@@ -13,7 +13,7 @@ import pickle
 # Load dataset
 @st.cache
 def load_data():
-    file_path = "Copper_Set 1.csv"  # Adjust path as needed
+    file_path = "Copper_Set.csv"  # Adjust path as needed
     df = pd.read_csv(file_path)
     df['material_ref'] = df['material_ref'].replace(to_replace=r'^0+$', value=np.nan, regex=True)
     return df
