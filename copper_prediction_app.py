@@ -39,6 +39,9 @@ iso = IsolationForest(contamination=0.05, random_state=42)
 outliers = iso.fit_predict(data.select_dtypes(include=['number']))
 data = data[outliers == 1]
 
+# Initialize placeholders for regression and classification tasks
+X_reg, y_reg, X_cls, y_cls = None, None, None, None
+
 # Separate Regression and Classification Tasks
 if 'Selling_Price' in data.columns:
     X_reg = data.drop(columns=['Selling_Price', 'Status'], errors='ignore')
@@ -50,35 +53,44 @@ if 'Status' in data.columns:
 
 # Encode categorical variables
 encoder = LabelEncoder()
-if 'Status' in locals():
+if y_cls is not None:
     y_cls = encoder.fit_transform(y_cls)
 
 # Train-Test Split
-if 'Selling_Price' in locals():
-    X_reg_train, X_reg_test, y_reg_train, y_reg_test = train_test_split(X_reg, y_reg, test_size=0.2, random_state=42)
+X_reg_train, X_reg_test, y_reg_train, y_reg_test = None, None, None, None
+X_cls_train, X_cls_test, y_cls_train, y_cls_test = None, None, None, None
 
-if 'Status' in locals():
-    X_cls_train, X_cls_test, y_cls_train, y_cls_test = train_test_split(X_cls, y_cls, test_size=0.2, random_state=42)
+if X_reg is not None and y_reg is not None:
+    X_reg_train, X_reg_test, y_reg_train, y_reg_test = train_test_split(
+        X_reg, y_reg, test_size=0.2, random_state=42
+    )
+
+if X_cls is not None and y_cls is not None:
+    X_cls_train, X_cls_test, y_cls_train, y_cls_test = train_test_split(
+        X_cls, y_cls, test_size=0.2, random_state=42
+    )
 
 # Scaling
 scaler = StandardScaler()
-if 'Selling_Price' in locals():
+X_reg_train_scaled, X_reg_test_scaled = None, None
+if X_reg_train is not None:
     X_reg_train_scaled = scaler.fit_transform(X_reg_train)
     X_reg_test_scaled = scaler.transform(X_reg_test)
 
 # Train Models
-if 'Selling_Price' in locals():
+regressor, classifier = None, None
+if X_reg_train_scaled is not None and y_reg_train is not None:
     regressor = RandomForestRegressor(random_state=42)
     regressor.fit(X_reg_train_scaled, y_reg_train)
 
-if 'Status' in locals():
+if X_cls_train is not None and y_cls_train is not None:
     classifier = RandomForestClassifier(random_state=42)
     classifier.fit(X_cls_train, y_cls_train)
 
 # Save Models and Preprocessing Objects
-if 'Selling_Price' in locals():
+if regressor is not None:
     pickle.dump(regressor, open('regressor.pkl', 'wb'))
-if 'Status' in locals():
+if classifier is not None:
     pickle.dump(classifier, open('classifier.pkl', 'wb'))
 pickle.dump(scaler, open('scaler.pkl', 'wb'))
 
@@ -87,25 +99,31 @@ st.title("Copper Industry ML Application")
 task = st.selectbox("Select Task", ["Regression (Selling Price)", "Classification (Status)"])
 
 if task == "Regression (Selling Price)":
-    st.header("Predict Selling Price")
-    input_data = []
-    for col in X_reg.columns:
-        value = st.number_input(f"Enter {col}", value=0.0)
-        input_data.append(value)
-    input_data = np.array(input_data).reshape(1, -1)
-    input_data_scaled = scaler.transform(input_data)
-    regressor = pickle.load(open('regressor.pkl', 'rb'))
-    pred = regressor.predict(input_data_scaled)
-    st.write(f"Predicted Selling Price: {np.expm1(pred[0]):.2f} (Original Scale)")
+    if X_reg is None or regressor is None:
+        st.error("Regression model is not available due to missing 'Selling_Price' data.")
+    else:
+        st.header("Predict Selling Price")
+        input_data = []
+        for col in X_reg.columns:
+            value = st.number_input(f"Enter {col}", value=0.0)
+            input_data.append(value)
+        input_data = np.array(input_data).reshape(1, -1)
+        input_data_scaled = scaler.transform(input_data)
+        regressor = pickle.load(open('regressor.pkl', 'rb'))
+        pred = regressor.predict(input_data_scaled)
+        st.write(f"Predicted Selling Price: {np.expm1(pred[0]):.2f} (Original Scale)")
 
 elif task == "Classification (Status)":
-    st.header("Predict Status (Won/Lost)")
-    input_data = []
-    for col in X_cls.columns:
-        value = st.number_input(f"Enter {col}", value=0.0)
-        input_data.append(value)
-    input_data = np.array(input_data).reshape(1, -1)
-    classifier = pickle.load(open('classifier.pkl', 'rb'))
-    pred = classifier.predict(input_data)
-    status = 'WON' if pred[0] == 1 else 'LOST'
-    st.write(f"Predicted Status: {status}")
+    if X_cls is None or classifier is None:
+        st.error("Classification model is not available due to missing 'Status' data.")
+    else:
+        st.header("Predict Status (Won/Lost)")
+        input_data = []
+        for col in X_cls.columns:
+            value = st.number_input(f"Enter {col}", value=0.0)
+            input_data.append(value)
+        input_data = np.array(input_data).reshape(1, -1)
+        classifier = pickle.load(open('classifier.pkl', 'rb'))
+        pred = classifier.predict(input_data)
+        status = 'WON' if pred[0] == 1 else 'LOST'
+        st.write(f"Predicted Status: {status}")
