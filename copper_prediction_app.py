@@ -10,7 +10,7 @@ import pickle
 import streamlit as st
 
 # Load dataset
-df = pd.read_csv("your_dataset.csv")
+df = pd.read_csv("Copper_Set.csv")
 
 # 1. Data Understanding
 categorical_vars = df.select_dtypes(include=['object', 'category']).columns.tolist()
