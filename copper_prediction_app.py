@@ -33,8 +33,7 @@ def preprocess_data(df, task):
         df['status'] = df['status'].apply(lambda x: 1 if x == "Won" else 0)
 
     return df
-
-
+    
 def load_or_train_models(df):
     # Check if models exist, load them if available
     if os.path.exists("Regression_model.pkl") and os.path.exists("Classification_model.pkl"):
@@ -46,17 +45,17 @@ def load_or_train_models(df):
         y_reg = df["selling_price"] if "selling_price" in df.columns else None
         y_cls = df["status"] if "status" in df.columns else None
 
-        # Handle missing target values
+        # Handle missing target values and ensure alignment
         if y_reg is not None:
             valid_idx = ~y_reg.isna()
-            X = X[valid_idx]
-            y_reg = y_reg[valid_idx]
+            X = X.loc[valid_idx].reset_index(drop=True)
+            y_reg = y_reg.loc[valid_idx].reset_index(drop=True)
             st.write(f"Dropped {len(valid_idx) - valid_idx.sum()} rows with missing 'selling_price'.")
-        
+
         if y_cls is not None:
             valid_idx = ~y_cls.isna()
-            X = X[valid_idx]
-            y_cls = y_cls[valid_idx]
+            X = X.loc[valid_idx].reset_index(drop=True)
+            y_cls = y_cls.loc[valid_idx].reset_index(drop=True)
             st.write(f"Dropped {len(valid_idx) - valid_idx.sum()} rows with missing 'status'.")
 
         # Define categorical and numerical columns
@@ -73,18 +72,18 @@ def load_or_train_models(df):
 
         # Train regression model
         reg_model = Pipeline(steps=[("preprocessor", preprocessor), ("model", RandomForestRegressor(random_state=42))])
-        if y_reg is not None:
+        if y_reg is not None and len(y_reg) > 0:
             reg_model.fit(X, y_reg)
             pickle.dump(reg_model, open("Regression_model.pkl", "wb"))
 
         # Train classification model
         cls_model = Pipeline(steps=[("preprocessor", preprocessor), ("model", RandomForestClassifier(random_state=42))])
-        if y_cls is not None:
+        if y_cls is not None and len(y_cls) > 0:
             cls_model.fit(X, y_cls)
             pickle.dump(cls_model, open("Classification_model.pkl", "wb"))
     
     return reg_model, cls_model
-
+    
 # Streamlit App
 def main():
     st.title("Copper Industry ML Prediction App")
