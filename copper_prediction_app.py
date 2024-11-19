@@ -9,22 +9,26 @@ import pickle
 import streamlit as st
 
 # Load Dataset
-file_path = 'Copper_Set.csv'  # Replace with the uploaded file path
-data = pd.read_csv(file_path)
+file_path = 'Copper_Set 1.csv'  # Replace with the correct path to your dataset
+data = pd.read_csv(file_path, low_memory=False)
 
 # Data Preprocessing
-# Handle mixed data types by coercing object columns to numeric where applicable
-for col in data.columns:
-    if data[col].dtype == 'object':
-        data[col] = pd.to_numeric(data[col], errors='coerce')
+# Identify numeric and non-numeric columns
+numeric_cols = data.select_dtypes(include=['number']).columns
+non_numeric_cols = data.select_dtypes(exclude=['number']).columns
 
-# Handle missing values
-imputer = SimpleImputer(strategy='mean')  # Use mean imputation
-data = pd.DataFrame(imputer.fit_transform(data), columns=data.columns)
+# Impute numeric columns with mean
+valid_numeric_cols = [col for col in numeric_cols if data[col].notna().sum() > 0]
+imputer = SimpleImputer(strategy='mean')
+data[valid_numeric_cols] = imputer.fit_transform(data[valid_numeric_cols])
 
-# Remove the 'INDEX' column if it exists
-if 'INDEX' in data.columns:
-    data.drop(columns=['INDEX'], inplace=True)
+# Impute non-numeric columns with mode
+for col in non_numeric_cols:
+    if data[col].notna().sum() > 0:  # Skip columns with all missing values
+        data[col].fillna(data[col].mode()[0], inplace=True)
+
+# Drop columns that are entirely missing or incompatible with ML
+data = data.dropna(axis=1, how='all')
 
 # Handle Skewness in 'Selling_Price' using log transformation
 if 'Selling_Price' in data.columns:
@@ -32,7 +36,7 @@ if 'Selling_Price' in data.columns:
 
 # Treat outliers using Isolation Forest
 iso = IsolationForest(contamination=0.05, random_state=42)
-outliers = iso.fit_predict(data)
+outliers = iso.fit_predict(data.select_dtypes(include=['number']))
 data = data[outliers == 1]
 
 # Separate Regression and Classification Tasks
